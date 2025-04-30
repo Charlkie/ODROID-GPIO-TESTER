@@ -1,24 +1,50 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from odroid_gpio import OdroidGPIO
 
-# Stub hardware interface: replace with actual ODROID GPIO/ADC library calls
 class HardwareInterface:
-    @staticmethod
-    def set_pins_high(pins):
-        print(f"[Stub] Setting pins HIGH: {pins}")
+    # Keep track of pin objects to reuse them
+    _pin_objects = {}
 
     @staticmethod
-    def set_pins_low(pins):
-        print(f"[Stub] Setting pins LOW: {pins}")
+    def _parse_export_number(pin_label):
+        # Extracts the number from a label like "#113(19)"
+        return int(pin_label.split('(')[0][1:])
 
-    @staticmethod
-    def output_square_wave(pins, period_ms, duty_cycle):
-        print(f"[Stub] Outputting square wave on {pins} — period: {period_ms} ms, duty: {duty_cycle}%")
+    @classmethod
+    def _get_pin(cls, label):
+        pin_number = cls._parse_export_number(label)
+        if pin_number not in cls._pin_objects:
+            cls._pin_objects[pin_number] = OdroidGPIO(pin_number)
+        return cls._pin_objects[pin_number]
+
+    @classmethod
+    def set_pins_high(cls, labels):
+        for label in labels:
+            pin = cls._get_pin(label)
+            pin.high()
+
+    @classmethod
+    def set_pins_low(cls, labels):
+        for label in labels:
+            pin = cls._get_pin(label)
+            pin.low()
+
+    @classmethod
+    def output_square_wave(cls, labels, period_ms, duty_cycle):
+        for label in labels:
+            pin = cls._get_pin(label)
+            pin.start_square_wave(period_ms, duty_cycle)
 
     @staticmethod
     def read_adc(channel):
-        print(f"[Stub] Reading ADC channel: {channel}")
-        return 1234  # dummy value
+        raw = OdroidGPIO.read_adc_raw(channel)
+        voltage = OdroidGPIO.adc_voltage(channel)
+        psi = OdroidGPIO.voltage_to_psi(voltage)
+        return raw, voltage, psi
+
+
+
 
 class GPIOTesterApp:
     # GPIO export numbers sorted, with physical header pins in brackets
@@ -78,7 +104,7 @@ class GPIOTesterApp:
         adc_frame.pack(fill="x", padx=10, pady=5)
 
         ttk.Label(adc_frame, text="Channel:").pack(side=tk.LEFT, padx=5)
-        self.adc_channel = ttk.Combobox(adc_frame, values=[f"CH{i}" for i in range(1, 5)], width=5)
+        self.adc_channel = ttk.Combobox(adc_frame, values=["CH1(#37)","CH2(#40)"], width=8)
         self.adc_channel.current(0)
         self.adc_channel.pack(side=tk.LEFT)
         ttk.Button(adc_frame, text="Read ADC", command=self.read_adc).pack(side=tk.LEFT, padx=5)
@@ -134,9 +160,15 @@ class GPIOTesterApp:
             messagebox.showerror("Invalid Input", "Enter valid period>0 and 0<duty<=100.")
 
     def read_adc(self):
-        channel = self.adc_channel.get()
-        value = HardwareInterface.read_adc(channel)
-        self.adc_value_label.config(text=f"Value: {value}")
+        channel = self.adc_channel.get()[:3]
+        try:
+            raw, voltage, psi = HardwareInterface.read_adc(channel)
+            self.adc_value_label.config(
+                text=f"Raw: {raw} | Voltage: {voltage:.3f} V | PSI: {psi:.1f}"
+            )
+        except Exception as e:
+            messagebox.showerror("ADC Read Error", str(e))
+
 
 if __name__ == "__main__":
     root = tk.Tk()
