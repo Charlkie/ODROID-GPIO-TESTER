@@ -5,8 +5,9 @@ import threading
 import time
 import random
 
+# Try to import the real OdroidGPIO; otherwise, use a fake for macOS testing
 try:
-    from odroid_gpio import OdroidGPIO
+    from your_gpio_module import OdroidGPIO
     REAL_GPIO = True
 except ImportError:
     REAL_GPIO = False
